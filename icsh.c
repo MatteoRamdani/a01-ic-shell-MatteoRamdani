@@ -2,18 +2,18 @@
  * Name: Matteo Ramdani
  * StudentID: 6480996
  */
-
-#include "stdio.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
+#include <unistd.h>
+#include <sys/wait.h>
 
 #define MAX_CMD_BUFFER 255
+#define MAX_ARGS 64
 
 int main(int argc, char *argv[]) {
     char buffer[MAX_CMD_BUFFER];
-    char last_command[MAX_CMD_BUFFER] = {0};
-
+    char last_command[MAX_CMD_BUFFER] = "";
     FILE *input = stdin;
 
     // Check for script file
@@ -33,10 +33,11 @@ int main(int argc, char *argv[]) {
     while (1) {
         if (input == stdin) {
             printf("icsh $ ");
+            fflush(stdout);  // Ensure prompt is displayed
         }
 
         if (fgets(buffer, MAX_CMD_BUFFER, input) == NULL) {
-            printf("\n");
+            if (input == stdin) printf("\n");
             break;
         }
 
@@ -48,46 +49,56 @@ int main(int argc, char *argv[]) {
         // Handle !!
         if (strcmp(buffer, "!!") == 0) {
             if (strlen(last_command) == 0) {
+                fprintf(stderr, "No previous command to execute\n");
                 continue;
-            } else {
-                printf("%s\n", last_command);
-                strcpy(buffer, last_command);
             }
+            printf("%s\n", last_command);
+            strcpy(buffer, last_command);
         } else {
-            strcpy(last_command, buffer);  // Save new command
+            strcpy(last_command, buffer);
         }
 
-        // Parse command
-        char *cmd = strtok(buffer, " ");
-
-        if (cmd == NULL) continue;
-
-        // Handle echo
-        if (strcmp(cmd, "echo") == 0) {
-            char *text = strtok(NULL, "");
-            if (text) {
-                printf("%s\n", text);
-            } else {
-                printf("\n");
-            }
+        // Parse command and arguments
+        char *args[MAX_ARGS];
+        int arg_count = 0;
+        char *token = strtok(buffer, " ");
+        
+        while (token != NULL && arg_count < MAX_ARGS - 1) {
+            args[arg_count++] = token;
+            token = strtok(NULL, " ");
         }
+        args[arg_count] = NULL;
 
-        // Handle exit <num>
-        else if (strcmp(cmd, "exit") == 0) {
-            char *num_str = strtok(NULL, " ");
+        // Handle built-in commands
+        if (strcmp(args[0], "exit") == 0) {
             int exit_code = 0;
-            if (num_str) {
-                exit_code = atoi(num_str) & 0xFF;
-            }
+            if (arg_count > 1) exit_code = atoi(args[1]) & 0xFF;
             printf("bye\n");
             return exit_code;
         }
+        else if (strcmp(args[0], "echo") == 0) {
+            for (int i = 1; i < arg_count; i++) {
+                printf("%s%s", args[i], (i < arg_count - 1) ? " " : "");
+            }
+            printf("\n");
+            continue;
+        }
 
-        // Unknown command
-        else {
-            printf("bad command\n");
+        // Execute external command
+        pid_t pid = fork();
+        if (pid == 0) {
+            // Child process
+            execvp(args[0], args);
+            perror("execvp");
+            exit(1);
+        } else if (pid > 0) {
+            // Parent process
+            waitpid(pid, NULL, 0);
+        } else {
+            perror("fork");
         }
     }
 
+    if (input != stdin) fclose(input);
     return 0;
 }
