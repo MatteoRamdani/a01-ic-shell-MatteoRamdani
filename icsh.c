@@ -98,7 +98,7 @@ int main(int argc, char *argv[]) {
             perror("fork");
         }
     }
-
+    //comment for testing github
     if (input != stdin) fclose(input);
     return 0;
 }
