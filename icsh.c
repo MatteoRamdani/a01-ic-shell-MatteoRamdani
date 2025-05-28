@@ -7,16 +7,49 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <signal.h>
 
 #define MAX_CMD_BUFFER 255
 #define MAX_ARGS 64
+
+// Global variable to track foreground process
+pid_t foreground_pid = 0;
+
+// Signal handler for SIGINT (Ctrl+C)
+void handle_sigint(int sig) {
+    if (foreground_pid > 0) {
+        kill(foreground_pid, SIGINT);
+    }
+}
+
+// Signal handler for SIGTSTP (Ctrl+Z)
+void handle_sigtstp(int sig) {
+    if (foreground_pid > 0) {
+        kill(foreground_pid, SIGTSTP);
+    }
+}
 
 int main(int argc, char *argv[]) {
     char buffer[MAX_CMD_BUFFER];
     char last_command[MAX_CMD_BUFFER] = "";
     FILE *input = stdin;
 
-    // Check for script file
+    // Set up signal handlers
+    struct sigaction sa_int, sa_tstp;
+    
+    // SIGINT handler (Ctrl+C)
+    sa_int.sa_handler = handle_sigint;
+    sigemptyset(&sa_int.sa_mask);
+    sa_int.sa_flags = SA_RESTART;
+    sigaction(SIGINT, &sa_int, NULL);
+    
+    // SIGTSTP handler (Ctrl+Z)
+    sa_tstp.sa_handler = handle_sigtstp;
+    sigemptyset(&sa_tstp.sa_mask);
+    sa_tstp.sa_flags = SA_RESTART;
+    sigaction(SIGTSTP, &sa_tstp, NULL);
+
+    // Rest of your initialization code...
     if (argc == 2) {
         input = fopen(argv[1], "r");
         if (!input) {
@@ -31,9 +64,11 @@ int main(int argc, char *argv[]) {
     printf("Welcome to icsh!\n");
 
     while (1) {
+        foreground_pid = 0; // Reset before each command
+        
         if (input == stdin) {
             printf("icsh $ ");
-            fflush(stdout);  // Ensure prompt is displayed
+            fflush(stdout);
         }
 
         if (fgets(buffer, MAX_CMD_BUFFER, input) == NULL) {
@@ -41,9 +76,7 @@ int main(int argc, char *argv[]) {
             break;
         }
 
-        buffer[strcspn(buffer, "\n")] = '\0';  // Remove newline
-
-        // Skip empty commands
+        buffer[strcspn(buffer, "\n")] = '\0';
         if (strlen(buffer) == 0) continue;
 
         // Handle !!
@@ -58,7 +91,7 @@ int main(int argc, char *argv[]) {
             strcpy(last_command, buffer);
         }
 
-        // Parse command and arguments
+        // Parse command
         char *args[MAX_ARGS];
         int arg_count = 0;
         char *token = strtok(buffer, " ");
@@ -69,7 +102,7 @@ int main(int argc, char *argv[]) {
         }
         args[arg_count] = NULL;
 
-        // Handle built-in commands
+        // Built-in commands
         if (strcmp(args[0], "exit") == 0) {
             int exit_code = 0;
             if (arg_count > 1) exit_code = atoi(args[1]) & 0xFF;
@@ -84,21 +117,24 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        // Execute external command
+        // External command
         pid_t pid = fork();
         if (pid == 0) {
             // Child process
+            setpgid(0, 0); // Important for signal handling
             execvp(args[0], args);
-            perror("execvp");
-            exit(1);
+            fprintf(stderr, "icsh: %s: command not found\n", args[0]);
+            exit(127);
         } else if (pid > 0) {
             // Parent process
+            foreground_pid = pid;
             waitpid(pid, NULL, 0);
+            foreground_pid = 0;
         } else {
             perror("fork");
         }
     }
-    //comment for testing github
+
     if (input != stdin) fclose(input);
     return 0;
 }
