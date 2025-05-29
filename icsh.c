@@ -8,6 +8,8 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 
 #define MAX_CMD_BUFFER 255
 #define MAX_ARGS 64
@@ -49,7 +51,6 @@ int main(int argc, char *argv[]) {
     sa_tstp.sa_flags = SA_RESTART;
     sigaction(SIGTSTP, &sa_tstp, NULL);
 
-    // Rest of your initialization code...
     if (argc == 2) {
         input = fopen(argv[1], "r");
         if (!input) {
@@ -117,11 +118,66 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
+        // Check for I/O redirection
+        char *input_file = NULL;
+        char *output_file = NULL;
+        int input_redirect_pos = -1;
+        int output_redirect_pos = -1;
+
+        for (int i = 0; i < arg_count; i++) {
+            if (strcmp(args[i], "<") == 0 && i+1 < arg_count) {
+                input_file = args[i+1];
+                input_redirect_pos = i;
+                break;
+            }
+        }
+
+        for (int i = 0; i < arg_count; i++) {
+            if (strcmp(args[i], ">") == 0 && i+1 < arg_count) {
+                output_file = args[i+1];
+                output_redirect_pos = i;
+                break;
+            }
+        }
+
+        // Terminate args properly at redirection operators
+        if (input_redirect_pos != -1) {
+            args[input_redirect_pos] = NULL;
+            arg_count = input_redirect_pos;
+        }
+        if (output_redirect_pos != -1) {
+            args[output_redirect_pos] = NULL;
+            arg_count = output_redirect_pos;
+        }
+
         // External command
         pid_t pid = fork();
         if (pid == 0) {
             // Child process
             setpgid(0, 0); // Important for signal handling
+
+            // Input redirection
+            if (input_file) {
+                int fd = open(input_file, O_RDONLY);
+                if (fd < 0) {
+                    perror("icsh: input redirection failed");
+                    exit(1);
+                }
+                dup2(fd, STDIN_FILENO);
+                close(fd);
+            }
+
+            // Output redirection
+            if (output_file) {
+                int fd = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                if (fd < 0) {
+                    perror("icsh: output redirection failed");
+                    exit(1);
+                }
+                dup2(fd, STDOUT_FILENO);
+                close(fd);
+            }
+
             execvp(args[0], args);
             fprintf(stderr, "icsh: %s: command not found\n", args[0]);
             exit(127);

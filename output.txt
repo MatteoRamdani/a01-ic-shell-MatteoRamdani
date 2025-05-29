@@ -1,0 +1,7 @@
+total 32
+-rwxrwxrwx 1 teo teo   134 May 20 21:35 Makefile
+-rwxrwxrwx 1 teo teo   271 May 20 21:35 README.md
+-rwxrwxrwx 1 teo teo 23928 May 29 12:55 icsh
+-rwxrwxrwx 1 teo teo  5101 May 29 12:55 icsh.c
+-rwxrwxrwx 1 teo teo     0 May 29 12:55 output.txt
+-rwxrwxrwx 1 teo teo    33 May 24 23:24 test.sh
