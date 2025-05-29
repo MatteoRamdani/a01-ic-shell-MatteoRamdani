@@ -1,8 +1,0 @@
-Makefile
-README.md
-icsh
-icsh.c
-input.txt
-out.txt
-output.txt
-test.sh
